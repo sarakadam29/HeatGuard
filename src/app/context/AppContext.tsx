@@ -65,18 +65,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Basic geolocation detection & Weather fetching
     const init = async () => {
+      let lat = 28.61; // Default New Delhi
+      let lon = 77.23;
+      let locationName = user.location;
+
+      const getPosition = (): Promise<GeolocationPosition> => 
+        new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject));
+
+      const reverseGeocode = async (lt: number, ln: number) => {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lt}&lon=${ln}`);
+          const data = await res.json();
+          return data.address.city || data.address.town || data.address.village || data.display_name.split(",")[0];
+        } catch (e) {
+          return "Detected Location";
+        }
+      };
+
       try {
         setLoading(true);
-        const data = await fetchWeather();
-        setWeather(data);
-        
-        if (user.location === "Detecting...") {
-          setUser(prev => ({ ...prev, location: "New Delhi, India" }));
+        // Step 1: Detect Geolocation
+        try {
+          const pos = await getPosition();
+          lat = pos.coords.latitude;
+          lon = pos.coords.longitude;
+          
+          // Step 2: Get Location Name
+          locationName = await reverseGeocode(lat, lon);
+          setUser(prev => ({ ...prev, location: locationName }));
+        } catch (geoErr) {
+          console.warn("Geolocation denied or failed, using default.");
+          if (user.location === "Detecting...") {
+            setUser(prev => ({ ...prev, location: "New Delhi, India" }));
+          }
         }
+
+        // Step 3: Fetch Weather for detecting/default coordinates
+        const data = await fetchWeather(lat, lon);
+        setWeather(data);
       } catch (err) {
-        console.error("Weather fetch error:", err);
+        console.error("Initialization error:", err);
       } finally {
         setLoading(false);
       }
